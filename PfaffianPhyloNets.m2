@@ -109,3 +109,79 @@ pfaffianDetIdeal = (n, X) -> (
     )
 
 
+
+cfnBinoms = (n, Q) -> (
+
+    binoms := phyloToricFP(leafTree(5, {{0,1}, {0,1,2}}), CFNmodel);
+    liftBinoms := map(Q, ring binoms, apply(gens(ring binoms), l -> q_(prepend(0, last baseName l))));
+
+    liftBinoms(binoms) 
+    )
+
+
+
+sunletParam = n -> (
+
+  indR := indexSet n;
+
+  S := QQ[{t} | apply(2*n, i -> a_i)];
+
+  --network param
+  images := for ivec in indR list (
+
+    product(apply(n, j -> if ivec_j == 1 then a_j else 1))*(product(apply(n-1, j -> if odd sum(ivec_(toList(0..j))) then a_(n+j) else 1)) + product(apply(toList(1..n-1), j -> if odd sum(ivec_(toList(1..j))) then a_(n+j) else 1)))
+    );
+
+  return t*images;
+  )
+
+-- Creates the parameterization of the sunlet network variety in the Fourier coordinates
+-- Note that we give each q_g variable degree 2n so that the elimination ideal is properly homogenized
+-- This greatly speeds up the Grobner basis computation and also allows us to compute a degree-bounded Grobner basis with degLimit option
+-- Note that degLimit should just be the degree that one wants the resulting polynomials in the q_g to be if each q_g has degree 1
+sunletElimIdeal = {degLimit => null, Qring => null} >> opts -> n -> (
+
+  indR := toList delete(null, apply((n:0)..(n:1), i ->  if sum(toList i) % 2 == 0 then i));
+
+  S := QQ[{t} | apply(2*n, i -> a_i) | apply(indR, i -> q_i), Degrees =>  toList(2*n+1 : 1)|toList(2^(n-1) : 2*n - 1), MonomialOrder => {2*n+1, 2^(n-1)}];
+
+  --network param
+  images := for ivec in indR list (
+
+    product(apply(n, j -> if ivec_j == 1 then a_j else t))*(product(apply(n-1, j -> if odd sum(ivec_(toList(0..j))) then a_(n+j) else t)) + product(apply(toList(1..n-1), j -> if odd sum(ivec_(toList(1..j))) then a_(n+j) else t)))
+    );
+
+  elimIdeal := ideal(for i from 0 to #images-1 list q_(indR#i) - images#i);
+  G := selectInSubring(1, if opts.degLimit === null then gens gb(elimIdeal) else gens gb(elimIdeal, DegreeLimit => 2*n*(opts.degLimit)));
+  R := if opts.Qring === null then qRing n else opts.Qring;
+  return(sub(ideal G, R));
+  )
+
+
+n = 6
+Q = qRing(n, CFNmodel);
+K = sunletElimIdeal(6, degLimit => 2, Qring => Q);
+
+X = xRing n;
+psi = pfaffianMap(n, Q, X)
+kerPsi = ker(psi)
+I = pfaffianDetIdeal(n, X)
+qCoordsInOrder = for g in gens(X) list(
+
+    ind = last baseName(g);
+
+    basicQCoord(n, ind#0, ind#1, Q)
+    );
+
+invPsi = map(Q, X, qCoordsInOrder)
+
+J1 = homogenize(kerPsi, Q_0)
+J2 = invPsi(I)
+J = J1 + J2
+
+
+for g in K_* list if g % J == 0 then continue else g
+
+
+
+
