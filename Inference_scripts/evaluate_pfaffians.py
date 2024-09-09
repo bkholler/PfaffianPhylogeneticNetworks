@@ -22,7 +22,17 @@ def get1Norm(values):
 def isCanonical(perm, n):
 	return perm[1] < perm[n-1]
 
-def evaluatePermutedAlignment(alignment, perm, n):
+def getFrequenciesFromPermutation(frequencyArray, permutation, n):
+	returnArray = np.zeros(shape=(2,)*n, dtype=np.longdouble)
+	for index, freq in np.ndenumerate(frequencyArray):
+		permutedIndex = [0] * n
+		for i in range(n):
+			permutedIndex[i] = index[permutation[i]]
+		returnArray[tuple(permutedIndex)] = freq
+
+	return returnArray
+
+def evaluatePermutedAlignment(frequencies, perm, n):
 	#find the permutation under which this leaf-labelled sunlet is invariant
 	#print("Started calculation for perm: " + str(perm))
 	invariantPermList = list()
@@ -34,30 +44,9 @@ def evaluatePermutedAlignment(alignment, perm, n):
 
 	score = 0
 	for p in [perm, invariantPerm]:
-		#create permuted alignment
-		seqs = list()
-		inds = list()
-		for i in p:
-				seqs.append(alignment.iloc[i])
-				inds.append(alignment.index[i])
 
-		permutedAlignment = TabularMSA(seqs, index=inds)
-
-		#Create frequencies array
-		frequencies = np.zeros(shape=(2,)*n, dtype=np.longdouble)
-		count = 0
-		for col in permutedAlignment.iter_positions(ignore_metadata=True):
-			if "-" not in col:
-				index = [-1]*n
-				for i in range(n):
-					index[i] = PP[str(col[i])]
-				frequencies[tuple(index)] += 1
-				count += 1
-
-		for index, freq in np.ndenumerate(frequencies):
-			if freq != 0:
-				frequencies[index] = mpmath.fdiv(freq, count)
-
+		#get permuted frequencies array
+		permutedFrequencies = getFrequenciesFromPermutation(frequencies, p, n)
 		# Construct M matrix
 		M = np.zeros((n, n))
 		for i in range(n):
@@ -68,7 +57,7 @@ def evaluatePermutedAlignment(alignment, perm, n):
 					qIndex[j] = 1
 					# Perform Fourier transformation to get q_{e_i + e_j}
 					transformedValue = mpmath.mpf(0)
-					for pIndex, freq in np.ndenumerate(frequencies):
+					for pIndex, freq in np.ndenumerate(permutedFrequencies):
 						if freq > 0:
 							summand = freq
 							for l in range(n):
@@ -151,6 +140,20 @@ if __name__ == '__main__':
 	n = len(alignment)
 	scores = dict()
 
+	count = 0
+	frequencies = np.zeros(shape=(2,)*n, dtype=np.longdouble)
+	for col in alignment.iter_positions(ignore_metadata=True):
+		if "-" not in col:
+			index = [-1]*n
+			for i in range(n):
+				index[i] = PP[str(col[i])]
+			frequencies[tuple(index)] += 1
+			count += 1
+
+	for index, freq in np.ndenumerate(frequencies):
+		if freq != 0:
+			frequencies[index] = mpmath.fdiv(freq, count)
+
 	# get the permutations under which this sunlet is not invariant.
 	results = dict()
 	perms = permutations(range(n))
@@ -158,15 +161,13 @@ if __name__ == '__main__':
 	for perm in perms:
 		if not isCanonical(perm, n):
 			continue
-		results[perm] = pool.apply_async(evaluatePermutedAlignment, args=(alignment, perm, n))
+		results[perm] = pool.apply_async(evaluatePermutedAlignment, args=(frequencies, perm, n))
 	pool.close()
 	pool.join()
 
 	for key in results.keys():
 		scores[key] = results[key].get()
 
-	minScore = mpmath.mpf("inf")
-	minPerm = ""
 	rank = 1
 	sortedScores = dict(sorted(scores.items(), key=lambda item: item[1]))
 	for key in sortedScores.keys():
@@ -175,6 +176,6 @@ if __name__ == '__main__':
 		rank += 1
 
 	end = time.time()
-	print("evaluate_pfaffians.py time: " + str(end - start))
+	print("evaluate_pfaffians_v2.py time: " + str(end - start))
 
 
